@@ -1,0 +1,403 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+   PACT DESIGN SYSTEM FOUNDATION
+========================================================= */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #F5F6F4;
+  --surface: #FFFFFF;
+  --surface-secondary: #EBEBE8;
+
+  /* Typography */
+  --text-primary: #1A1C1B;
+  --text-secondary: #5F6361;
+  --text-muted: #8A8F8C;
+
+  /* Brand */
+  --primary: #608879;
+  --primary-hover: #4F7B6B;
+  --primary-light: #9DB7A6;
+
+  /* Semantic */
+  --success: #5F8D76;
+  --warning: #D6A85D;
+  --danger: #C96B6B;
+
+  /* Borders */
+  --border: #D9DDD8;
+  --divider: #E6E8E6;
+
+  /* Shadows */
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.04);
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Motion */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 220ms ease-out;
+  --transition-slow: 320ms ease-out;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #101312;
+  --surface: #171A19;
+  --surface-secondary: #1D2120;
+
+  /* Typography */
+  --text-primary: #F5F6F4;
+  --text-secondary: #A9B0AC;
+  --text-muted: #7D8480;
+
+  /* Borders */
+  --border: #2B302E;
+  --divider: #232826;
+
+  /* Shadows */
+  --shadow-card: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+/* =========================================================
+   BASE
+========================================================= */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family:
+    'Satoshi',
+    'Inter',
+    sans-serif;
+
+  background: var(--bg);
+  color: var(--text-primary);
+
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Selection */
+::selection {
+  background: var(--primary-light);
+  color: var(--text-primary);
+}
+
+/* =========================================================
+   TYPOGRAPHY
+========================================================= */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 40px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+}
+
+h3 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+p {
+  color: var(--text-secondary);
+}
+
+/* =========================================================
+   LAYOUT
+========================================================= */
+
+.container {
+  max-width: 1120px;
+}
+
+input, select {
+  box-sizing: border-box;
+}
+
+/* =========================================================
+   COMPONENT FOUNDATION
+========================================================= */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.card-secondary {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+}
+
+.divider {
+  border-color: var(--divider);
+}
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.button-primary {
+  background: var(--primary);
+  color: white;
+
+  border-radius: var(--radius-lg);
+
+  height: 48px;
+
+  padding-left: 16px;
+  padding-right: 16px;
+
+  transition:
+    background var(--transition-fast),
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.button-primary:hover {
+  background: var(--primary-hover);
+}
+
+.button-primary:active {
+  transform: scale(0.98);
+}
+
+.button-secondary {
+  background: transparent;
+  color: var(--text-primary);
+
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+
+  height: 48px;
+
+  padding-left: 16px;
+  padding-right: 16px;
+
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.button-secondary:hover {
+  background: var(--surface-secondary);
+}
+
+/* =========================================================
+   INPUTS
+========================================================= */
+
+input,
+textarea,
+select {
+  background: var(--surface);
+  color: var(--text-primary);
+
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(96, 136, 121, 0.12);
+}
+
+/* Date input icon */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+/* Numeric readability */
+input[inputmode="decimal"],
+input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================
+   TOAST
+========================================================= */
+
+@keyframes toast-slide {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-toast {
+  animation: toast-slide var(--transition-slow);
+}
+
+/* =========================================================
+   HIGHLIGHT
+========================================================= */
+
+@keyframes highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(96, 136, 121, 0);
+  }
+
+  50% {
+    box-shadow: 0 8px 24px -12px rgba(96, 136, 121, 0.22);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(96, 136, 121, 0);
+  }
+}
+
+.today-highlight {
+  animation: highlight-pulse 1.2s ease-in-out;
+}
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* =========================================================
+   RECHARTS
+========================================================= */
+
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--surface) !important;
+  color: var(--text-primary) !important;
+
+  border: 1px solid var(--border) !important;
+
+  border-radius: 12px !important;
+
+  box-shadow: var(--shadow-card) !important;
+
+  padding: 10px 12px !important;
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip .label {
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+}
+
+.recharts-tooltip-wrapper .recharts-default-tooltip td,
+.recharts-tooltip-wrapper .recharts-default-tooltip div {
+  color: var(--text-primary) !important;
+}
+
+.recharts-tooltip-cursor {
+  stroke: rgba(96, 136, 121, 0.14) !important;
+}
+
+.recharts-dot circle,
+.recharts-active-dot circle {
+  fill: var(--primary) !important;
+  stroke: var(--primary) !important;
+}
+
+/* =========================================================
+   UTILITIES
+========================================================= */
+
+.surface {
+  background: var(--surface);
+}
+
+.surface-secondary {
+  background: var(--surface-secondary);
+}
+
+.text-primary {
+  color: var(--text-primary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+.border-default {
+  border-color: var(--border);
+}
+
+.bg-primary {
+  background: var(--primary);
+}
+
+.bg-primary-hover:hover {
+  background: var(--primary-hover);
+}
