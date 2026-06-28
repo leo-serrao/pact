@@ -54,37 +54,23 @@ export default function FixedExpenses() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
-
     if (!name.trim() || amount <= 0) {
-      setToast({
-        message: 'Preencha nome e valor maior que 0',
-        variant: 'warning'
-      })
-
+      setToast({ message: 'Preencha nome e valor maior que 0', variant: 'warning' })
       return
     }
-
-    const item = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      amount,
-      category
+    try {
+      if (user) {
+        const result = await addFixedExpenseToUser(user.id, { name: name.trim(), amount, category })
+        addFixedExpense({ id: result.id, name: result.name, amount: result.amount, category: result.category })
+      }
+      setToast({ message: 'Gasto adicionado', variant: 'success' })
+      setName('')
+      setAmount(0)
+      setCategory('bills')
+    } catch (err) {
+      console.error(err)
+      setToast({ message: 'Erro ao salvar gasto', variant: 'error' })
     }
-
-    addFixedExpense(item as any)
-
-    if (user) {
-      await addFixedExpenseToUser(user.uid, item)
-    }
-
-    setToast({
-      message: 'Gasto adicionado',
-      variant: 'success'
-    })
-
-    setName('')
-    setAmount(0)
-    setCategory('bills')
   }
 
   return (
@@ -341,15 +327,9 @@ export default function FixedExpenses() {
           if (!user || !confirmDelete) return
 
           try {
-            await deleteFixedExpenseFromUser(
-              user.uid,
-              confirmDelete.id
-            )
-
-            setToast({
-              message: 'Gasto excluído',
-              variant: 'success'
-            })
+            await deleteFixedExpenseFromUser(user.id, confirmDelete.id)
+            useFinanceStore.getState().removeFixedExpense(confirmDelete.id)
+            setToast({ message: 'Gasto excluído', variant: 'success' })
           } catch (err) {
             console.error(err)
 
@@ -419,7 +399,7 @@ function EditFixedForm({
     try {
       if (user) {
         await updateFixedExpenseInUser(
-          user.uid,
+          user.id,
           item.id,
           {
             name: name.trim(),
@@ -427,6 +407,8 @@ function EditFixedForm({
             category
           }
         )
+        // update local store so UI reflects the change immediately
+        useFinanceStore.getState().updateFixedExpense({ id: item.id, name: name.trim(), amount, category })
       }
 
       onSaved()

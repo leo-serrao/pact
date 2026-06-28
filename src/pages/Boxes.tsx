@@ -26,9 +26,8 @@ export default function Boxes() {
   const [formError, setFormError] = useState<string | null>(null)
 
   const netSalary = profile?.netSalary ?? 0
-  const fixedExpenses = profile?.fixedExpenses ?? []
   const savingsPercent = profile?.savingsPercent ?? 0.2
-  const recommended = calculate50_30_20(netSalary, fixedExpenses, savingsPercent).savings
+  const recommended = calculate50_30_20(netSalary, [], savingsPercent).savings
 
   const totalDistributed = useMemo(() => savingBoxes.reduce((s, b) => s + b.amount, 0), [savingBoxes])
   const remaining = Math.round((recommended - totalDistributed) * 100) / 100
@@ -55,17 +54,21 @@ export default function Boxes() {
       return
     }
     setFormError(null)
-    const box = { id: editing?.id ?? Date.now().toString(), name: name.trim(), amount, createdAt: new Date().toISOString(), emoji: emoji || undefined }
+    const box = {
+      name: name.trim(),
+      amount,
+      emoji: emoji || undefined
+    }
     try {
       if (user) {
         if (editing) {
-          await updateSavingBoxInUser(user.uid, box.id, box)
+          await updateSavingBoxInUser(user.id, editing.id, box)
+          updateSavingBox({ ...editing, ...box })
         } else {
-          await addSavingBoxToUser(user.uid, box)
+          const result = await addSavingBoxToUser(user.id, box)
+          addSavingBox({ id: result.id, name: result.name, amount: result.amount, emoji: result.emoji ?? undefined, createdAt: result.created_at })
         }
       }
-      if (editing) updateSavingBox(box as any)
-      else addSavingBox(box as any)
       setToast({ message: editing ? 'Caixinha atualizada' : 'Caixinha criada', variant: 'success' })
       setOpen(false)
     } catch (err) {
@@ -469,7 +472,7 @@ export default function Boxes() {
 
           try {
             await deleteSavingBoxFromUser(
-              user.uid,
+              user.id,
               confirmDelete.id
             )
 

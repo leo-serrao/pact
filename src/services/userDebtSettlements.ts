@@ -1,35 +1,44 @@
-import { subscribeToSharedGroups } from './sharedGroups'
+import { subscribeToPartnerships } from './sharedGroups'
 import { subscribeToDebtSettlements } from './debtSettlements'
 
-// Subscribe to all debtSettlements for groups the user is a member of.
-export function subscribeToUserDebtSettlements(uid: string, onUpdate: (items: any[]) => void, onError?: (err:any)=>void) {
+export function subscribeToUserDebtSettlements(
+  uid: string,
+  onUpdate: (items: any[]) => void,
+  onError?: (err: any) => void
+) {
   if (!uid) return () => {}
 
-  let groupUnsub: (()=>void) | null = null
-  const paymentsByGroup: Record<string, any[]> = {}
-  const groupSubs: Record<string, ()=>void> = {}
+  const settlementUnsubs: Record<string, () => void> = {}
+  const settlementsByPartnership: Record<string, any[]> = {}
 
   function emitAll() {
-    const all = Object.values(paymentsByGroup).flat()
-    onUpdate(all)
+    onUpdate(Object.values(settlementsByPartnership).flat())
   }
 
-  groupUnsub = subscribeToSharedGroups(uid, (groups) => {
-    const groupIds = groups.map(g => g.id)
-    // unsubscribe removed groups
-    Object.keys(groupSubs).forEach(gid => { if (!groupIds.includes(gid)) { groupSubs[gid]?.(); delete groupSubs[gid]; delete paymentsByGroup[gid] } })
-    groups.forEach(g => {
-      const gid = g.id
-      if (groupSubs[gid]) return
-      const unsub = subscribeToDebtSettlements(gid, (items:any[]) => { paymentsByGroup[gid] = items; emitAll() }, (err) => { if (onError) onError(err) })
-      groupSubs[gid] = unsub
+  const unsubPartnerships = subscribeToPartnerships(uid, (partnerships) => {
+    const partnershipIds = partnerships.map(p => p.id)
+
+    // Cleanup removed partnerships
+    Object.keys(settlementUnsubs).forEach(pid => {
+      if (!partnershipIds.includes(pid)) {
+        settlementUnsubs[pid]?.()
+        delete settlementUnsubs[pid]
+        delete settlementsByPartnership[pid]
+      }
     })
-  }, (err) => { if (onError) onError?.(err) })
+
+    partnerships.forEach(p => {
+      if (settlementUnsubs[p.id]) return
+
+      settlementUnsubs[p.id] = subscribeToDebtSettlements(p.id, (items) => {
+        settlementsByPartnership[p.id] = items
+        emitAll()
+      }, onError)
+    })
+  }, onError)
 
   return () => {
-    try { groupUnsub && groupUnsub() } catch(e){}
-    Object.values(groupSubs).forEach(u=>u())
+    try { unsubPartnerships?.() } catch (e) {}
+    Object.values(settlementUnsubs).forEach(u => u())
   }
 }
-
-export default { subscribeToUserDebtSettlements }

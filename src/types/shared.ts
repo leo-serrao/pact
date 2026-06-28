@@ -1,18 +1,27 @@
-export interface SharedGroup {
-  id?: string
+export interface Partnership {
+  id: string
   name: string
-  members: string[]
   createdAt: string
+  createdBy: string
+  role: 'owner' | 'member'
+}
+
+export interface PartnershipMember {
+  uid: string
+  role: 'owner' | 'member'
+  displayName: string
+  email?: string
 }
 
 export interface SharedExpense {
-  id?: string
+  id: string
+  partnership_id: string
   title: string
   amount: number
-  paidBy: string
-  participants: string[]
-  createdAt: string
+  paid_by: string
   date: string
+  note?: string
+  created_at: string
 }
 
 export interface Settlement {
@@ -22,10 +31,12 @@ export interface Settlement {
 }
 
 export interface DebtSettlement {
-  id?: string
-  fromUserId: string
-  toUserId: string
+  id: string
+  partnership_id: string
+  from_user_id: string
+  to_user_id: string
   amount: number
-  groupId: string
-  createdAt: string
+  date: string
+  note?: string
+  created_at: string
 }

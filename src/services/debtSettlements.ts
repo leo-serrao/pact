@@ -1,51 +1,67 @@
-import { db } from './firebase'
-import { collection, addDoc, getDocs, onSnapshot, doc, deleteDoc } from 'firebase/firestore'
-import { DebtSettlement } from '../types/shared'
+import { supabase } from './supabase'
 
-const settlementsPath = (groupId: string) => collection(db, 'sharedGroups', groupId, 'debtSettlements')
+export async function createDebtSettlement(partnershipId: string, data: {
+  from_user_id: string
+  to_user_id: string
+  amount: number
+  date: string
+  note?: string
+}) {
+  const { data: result, error } = await supabase
+    .from('debt_settlements')
+    .insert({ partnership_id: partnershipId, ...data })
+    .select()
+    .single()
 
-function sortByCreatedAt(items: any[]) {
-  return items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  if (error) throw error
+  return result
 }
 
-export async function createDebtSettlement(groupId: string, data: Omit<DebtSettlement, 'id' | 'createdAt'>) {
-  const payload = { ...data, createdAt: new Date().toISOString() }
-  return addDoc(settlementsPath(groupId), payload)
+export async function deleteDebtSettlement(settlementId: string) {
+  const { error } = await supabase
+    .from('debt_settlements')
+    .delete()
+    .eq('id', settlementId)
+
+  if (error) throw error
 }
 
-export async function deleteDebtSettlement(groupId: string, id: string) {
-  const d = doc(db, 'sharedGroups', groupId, 'debtSettlements', id)
-  return deleteDoc(d)
+export async function fetchDebtSettlements(partnershipId: string) {
+  const { data, error } = await supabase
+    .from('debt_settlements')
+    .select('*')
+    .eq('partnership_id', partnershipId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return data ?? []
 }
 
-export async function fetchDebtSettlements(groupId: string) {
-  const snap = await getDocs(settlementsPath(groupId))
-  const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as DebtSettlement[]
-  return sortByCreatedAt(items)
+export function subscribeToDebtSettlements(
+  partnershipId: string,
+  onUpdate: (items: any[]) => void,
+  onError?: (err: any) => void
+) {
+  fetchDebtSettlements(partnershipId).then(onUpdate).catch(onError)
+
+  // Unique channel name per call to avoid conflicts between
+  // Home (via userDebtSettlements) and SharedGroupDetails subscribing simultaneously
+  const channel = supabase
+    .channel(`debt_settlements:${partnershipId}:${crypto.randomUUID()}`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'debt_settlements',
+      filter: `partnership_id=eq.${partnershipId}`
+    }, async () => {
+      try {
+        const data = await fetchDebtSettlements(partnershipId)
+        onUpdate(data)
+      } catch (err) {
+        onError?.(err)
+      }
+    })
+    .subscribe()
+
+  return () => { supabase.removeChannel(channel) }
 }
-
-export function subscribeToDebtSettlements(groupId: string, onUpdate: (items: DebtSettlement[]) => void, onError?: (err:any)=>void) {
-  // Fetch once to detect permission errors, then attach realtime listener on collection
-  (async () => {
-    try {
-      const snap = await getDocs(settlementsPath(groupId))
-      const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as DebtSettlement[]
-      onUpdate(sortByCreatedAt(items))
-    } catch (err: any) {
-      console.error('subscribeToDebtSettlements initial getDocs error', err)
-      if (onError) onError(err)
-      return
-    }
-
-    const unsub = onSnapshot(settlementsPath(groupId), snap => {
-      const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as DebtSettlement[]
-      onUpdate(sortByCreatedAt(items))
-    }, (err) => { if (onError) onError(err); else console.error('subscribeToDebtSettlements error', err) })
-
-    ;(subscribeToDebtSettlements as any)._lastUnsub = unsub
-  })()
-
-  return () => { const u = (subscribeToDebtSettlements as any)._lastUnsub; if (u) u() }
-}
-
-export default { createDebtSettlement, fetchDebtSettlements, subscribeToDebtSettlements }

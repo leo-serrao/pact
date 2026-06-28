@@ -1,40 +1,82 @@
-import { db } from './firebase'
-import { collection, addDoc, doc, setDoc, deleteDoc, query, orderBy, getDocs, onSnapshot } from 'firebase/firestore'
-import { SharedExpense } from '../types/shared'
+import { supabase } from './supabase'
 
-const expensesPath = (groupId: string) => collection(db, 'sharedGroups', groupId, 'expenses')
+export async function createSharedExpense(partnershipId: string, data: {
+  title: string
+  amount: number
+  paid_by: string
+  date: string
+  note?: string
+}) {
+  const { data: result, error } = await supabase
+    .from('shared_expenses')
+    .insert({ partnership_id: partnershipId, ...data })
+    .select()
+    .single()
 
-export async function createSharedExpense(groupId: string, data: Omit<SharedExpense, 'id' | 'createdAt'>) {
-  const payload = { ...data, createdAt: new Date().toISOString() }
-  return addDoc(expensesPath(groupId), payload)
+  if (error) throw error
+  return result
 }
 
-export async function updateSharedExpense(groupId: string, expenseId: string, data: Partial<SharedExpense>) {
-  const d = doc(db, 'sharedGroups', groupId, 'expenses', expenseId)
-  return setDoc(d, data, { merge: true })
+export async function updateSharedExpense(expenseId: string, data: {
+  title?: string
+  amount?: number
+  paid_by?: string
+  date?: string
+  note?: string
+}) {
+  const { error } = await supabase
+    .from('shared_expenses')
+    .update(data)
+    .eq('id', expenseId)
+
+  if (error) throw error
 }
 
-export async function deleteSharedExpense(groupId: string, expenseId: string) {
-  const d = doc(db, 'sharedGroups', groupId, 'expenses', expenseId)
-  return deleteDoc(d)
+export async function deleteSharedExpense(expenseId: string) {
+  const { error } = await supabase
+    .from('shared_expenses')
+    .delete()
+    .eq('id', expenseId)
+
+  if (error) throw error
 }
 
-export async function fetchSharedExpenses(groupId: string) {
-  const q = query(expensesPath(groupId), orderBy('date', 'desc'))
-  const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as SharedExpense[]
+export async function fetchSharedExpenses(partnershipId: string) {
+  const { data, error } = await supabase
+    .from('shared_expenses')
+    .select('*')
+    .eq('partnership_id', partnershipId)
+    .order('date', { ascending: false })
+
+  if (error) throw error
+  return data ?? []
 }
 
-export function subscribeToSharedExpenses(groupId: string, onUpdate: (expenses: SharedExpense[]) => void, onError?: (err: any) => void) {
-  const q = query(expensesPath(groupId), orderBy('date', 'desc'))
-  const unsub = onSnapshot(q, snap => {
-    const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as SharedExpense[]
-    onUpdate(items)
-  }, (err) => {
-    if (onError) onError(err)
-    else console.error('subscribeToSharedExpenses error', err)
-  })
-  return unsub
-}
+export function subscribeToSharedExpenses(
+  partnershipId: string,
+  onUpdate: (expenses: any[]) => void,
+  onError?: (err: any) => void
+) {
+  fetchSharedExpenses(partnershipId).then(onUpdate).catch(onError)
 
-export default {}
+  // Unique channel name per call to avoid conflicts between
+  // Home (via sharedUserAdjustments) and SharedGroupDetails subscribing simultaneously
+  const channel = supabase
+    .channel(`shared_expenses:${partnershipId}:${crypto.randomUUID()}`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'shared_expenses',
+      filter: `partnership_id=eq.${partnershipId}`
+    }, async () => {
+      try {
+        const data = await fetchSharedExpenses(partnershipId)
+        onUpdate(data)
+      } catch (err) {
+        onError?.(err)
+      }
+    })
+    .subscribe()
+
+  return () => { supabase.removeChannel(channel) }
+}

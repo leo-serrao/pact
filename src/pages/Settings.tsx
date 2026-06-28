@@ -1,9 +1,7 @@
 import React, { useState } from 'react'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { useAuth } from '../contexts/AuthContext'
-import {
-  setUserProfile
-} from '../services/firestore'
+import { setUserProfile } from '../services/profile'
 import {
   deleteFixedExpenseFromUser,
   addFixedExpenseToUser,
@@ -14,9 +12,10 @@ import Toast from '../components/Toast'
 import CurrencyInput from '../components/CurrencyInput'
 import Modal from '../components/Modal'
 import ConfirmModal from '../components/ConfirmModal'
+import { FIXED_EXPENSE_CATEGORIES } from '../types'
 
 export default function Settings() {
-  const { profile, fixedExpenses, setProfile } = useFinanceStore()
+  const { profile, fixedExpenses, setProfile, updateFixedExpense } = useFinanceStore()
   const { user } = useAuth()
 
   const [netSalary, setNetSalary] = useState<number>(profile?.netSalary ?? 0)
@@ -24,8 +23,9 @@ export default function Settings() {
   const [savingsPct, setSavingsPct] = useState<number>((profile?.savingsPercent ?? 0.2) * 100)
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '')
 
-  const [name, setName] = useState('')
-  const [amount, setAmount] = useState<number>(0)
+  const [newName, setNewName] = useState('')
+  const [newAmount, setNewAmount] = useState<number>(0)
+  const [newCategory, setNewCategory] = useState<'bills' | 'subscriptions'>('bills')
 
   const [toast, setToast] = useState<any>(null)
   const [editing, setEditing] = useState<any | null>(null)
@@ -35,22 +35,22 @@ export default function Settings() {
     e.preventDefault()
     if (!user) return
 
-    const data = {
-      netSalary,
-      payDay,
-      savingsPercent: (savingsPct ?? 20) / 100,
-      displayName: displayName || undefined
-    }
-
     try {
-      await setUserProfile(user.uid, data)
+      await setUserProfile(user.id, {
+        display_name: displayName || undefined,
+        net_salary: netSalary,
+        pay_day: payDay,
+        savings_percent: (savingsPct ?? 20) / 100,
+      })
 
       setProfile({
-        uid: user.uid,
+        uid: user.id,
         email: user.email ?? undefined,
-        displayName: data.displayName ?? profile?.displayName,
-        ...data
-      } as any)
+        displayName: displayName || profile?.displayName,
+        netSalary,
+        payDay,
+        savingsPercent: (savingsPct ?? 20) / 100,
+      })
 
       setToast({ message: 'Perfil atualizado', variant: 'success' })
     } catch {
@@ -62,41 +62,58 @@ export default function Settings() {
     e.preventDefault()
     if (!user) return
 
-    if (!name.trim() || amount <= 0) {
+    if (!newName.trim() || newAmount <= 0) {
       setToast({ message: 'Nome e valor válidos são obrigatórios', variant: 'warning' })
       return
     }
 
-    const item = {
-      name: name.trim(),
-      amount,
-      category: ''
-    }
-
     try {
-      await addFixedExpenseToUser(user.uid, item)
-      setName('')
-      setAmount(0)
+      await addFixedExpenseToUser(user.id, {
+        name: newName.trim(),
+        amount: newAmount,
+        category: newCategory,
+      })
+      setNewName('')
+      setNewAmount(0)
+      setNewCategory('bills')
+      setToast({ message: 'Gasto fixo adicionado', variant: 'success' })
     } catch {
       setToast({ message: 'Erro ao adicionar gasto', variant: 'error' })
+    }
+  }
+
+  async function handleSaveEditing() {
+    if (!user || !editing) return
+
+    try {
+      await updateFixedExpenseInUser(user.id, editing.id, {
+        name: editing.name,
+        amount: editing.amount,
+        category: editing.category,
+      })
+      updateFixedExpense(editing)
+      setEditing(null)
+      setToast({ message: 'Gasto atualizado', variant: 'success' })
+    } catch {
+      setToast({ message: 'Erro ao atualizar gasto', variant: 'error' })
     }
   }
 
   async function confirmDeleteFixed(id: string) {
     if (!user) return
 
+    const found = fixedExpenses.find(f => f.id === id)
+
     try {
-      await deleteFixedExpenseFromUser(user.uid, id)
+      await deleteFixedExpenseFromUser(user.id, id)
 
       setToast({
         message: 'Gasto removido',
         variant: 'success',
         actionLabel: 'Desfazer',
         onAction: async () => {
-          const found = fixedExpenses.find(f => f.id === id)
           if (!found) return
-
-          await addFixedExpenseToUser(user.uid, found)
+          await addFixedExpenseToUser(user.id, found)
           setToast({ message: 'Exclusão revertida', variant: 'success' })
         }
       })
@@ -110,28 +127,25 @@ export default function Settings() {
   return (
     <div className="flex flex-col gap-8 max-w-3xl mx-auto">
 
-      {/* HEADER */}
+      {/* Header */}
       <div>
         <h1 className="text-[32px] font-semibold tracking-tight text-[var(--text-primary)]">
           Configurações
         </h1>
-
         <p className="text-sm text-[var(--text-secondary)] mt-1">
           Gerencie seu perfil e preferências financeiras.
         </p>
       </div>
 
-      {/* PROFILE CARD */}
+      {/* Profile card */}
       <section className="card p-6 md:p-8">
-        <form
-          onSubmit={handleSaveProfile}
-          className="grid gap-5 md:grid-cols-2"
-        >
+        <h2 className="text-base font-semibold text-[var(--text-primary)] mb-5">
+          Perfil
+        </h2>
+        <form onSubmit={handleSaveProfile} className="grid gap-5 md:grid-cols-2">
 
           <div className="md:col-span-2">
-            <label className="text-sm text-[var(--text-secondary)]">
-              Nome exibido
-            </label>
+            <label className="text-sm text-[var(--text-secondary)]">Nome exibido</label>
             <input
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
@@ -140,9 +154,7 @@ export default function Settings() {
           </div>
 
           <div>
-            <label className="text-sm text-[var(--text-secondary)]">
-              Salário líquido
-            </label>
+            <label className="text-sm text-[var(--text-secondary)]">Salário líquido</label>
             <CurrencyInput
               value={netSalary}
               onChange={setNetSalary}
@@ -151,9 +163,7 @@ export default function Settings() {
           </div>
 
           <div>
-            <label className="text-sm text-[var(--text-secondary)]">
-              Dia de recebimento
-            </label>
+            <label className="text-sm text-[var(--text-secondary)]">Dia de recebimento</label>
             <input
               type="number"
               min={1}
@@ -165,9 +175,7 @@ export default function Settings() {
           </div>
 
           <div className="md:col-span-2">
-            <label className="text-sm text-[var(--text-secondary)]">
-              % de poupança
-            </label>
+            <label className="text-sm text-[var(--text-secondary)]">% de poupança</label>
             <input
               type="number"
               min={0}
@@ -179,7 +187,7 @@ export default function Settings() {
           </div>
 
           <div className="md:col-span-2 flex justify-end pt-2">
-            <button className="button-primary">
+            <button type="submit" className="button-primary">
               Salvar perfil
             </button>
           </div>
@@ -187,55 +195,12 @@ export default function Settings() {
         </form>
       </section>
 
-      {/* MODALS */}
-      {editing && (
-        <Modal title="Editar gasto" onClose={() => setEditing(null)}>
-          <div className="space-y-3">
-
-            <input
-              value={editing.name}
-              onChange={e => setEditing({ ...editing, name: e.target.value })}
-              className="h-12 w-full px-4"
-            />
-
-            <CurrencyInput
-              value={editing.amount}
-              onChange={v => setEditing({ ...editing, amount: v })}
-              className="h-12 w-full px-4"
-            />
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setEditing(null)}
-                className="button-secondary"
-              >
-                Cancelar
-              </button>
-
-              <button
-                onClick={async () => {
-                  if (!user) return
-                  await updateFixedExpenseInUser(user.uid, editing.id, editing)
-                  setEditing(null)
-                }}
-                className="button-primary"
-              >
-                Salvar
-              </button>
-            </div>
-
-          </div>
-        </Modal>
-      )}
-
       <ConfirmModal
         open={!!confirmDelete}
         title="Excluir gasto"
-        message={`Excluir ${confirmDelete?.name}?`}
+        message={`Excluir "${confirmDelete?.name}"?`}
         onCancel={() => setConfirmDelete(null)}
-        onConfirm={() =>
-          confirmDelete && confirmDeleteFixed(confirmDelete.id)
-        }
+        onConfirm={() => confirmDelete && confirmDeleteFixed(confirmDelete.id)}
       />
 
       {toast && (

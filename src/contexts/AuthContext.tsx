@@ -1,103 +1,208 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth'
-import { auth } from '../services/firebase'
+import { Session, User } from '@supabase/supabase-js'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../services/supabase'
 import * as authService from '../services/auth'
-import { getUserProfile, setUserProfile } from '../services/firestore'
 import { useFinanceStore } from '../store/useFinanceStore'
-import { collection, onSnapshot } from 'firebase/firestore'
-import { db } from '../services/firebase'
+import { getPendingInvite, clearPendingInvite } from '../utils/invite'
+import { acceptInvite } from '../services/sharedGroups'
 
 type AuthContextValue = {
-  user: FirebaseUser | null
+  user: User | null
+  session: Session | null
   loading: boolean
   register: (email: string, password: string) => Promise<any>
   login: (email: string, password: string) => Promise<any>
-  googleSignIn?: () => Promise<any>
+  googleSignIn: () => Promise<any>
   logout: () => Promise<any>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<FirebaseUser | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const { setProfile, setFixedExpenses, setVariableExpenses } = useFinanceStore()
+  const { setProfile, setFixedExpenses, setVariableExpenses, setSavingBoxes } = useFinanceStore()
+  const navigate = useNavigate()
 
   useEffect(() => {
     let unsubFixed: (() => void) | null = null
     let unsubVariable: (() => void) | null = null
     let unsubBoxes: (() => void) | null = null
 
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u)
-      if (u) {
-        // Ensure Firestore /users/{uid} exists and has email + createdAt (merge: true)
-        try {
-          const profile = await getUserProfile(u.uid) || {}
-          const createdAt = (profile as any).createdAt ?? new Date().toISOString()
-          const update: any = { createdAt }
-          if (u.email) update.email = u.email
-          // only set displayName from auth if not present in profile (don't overwrite user-chosen name)
-          if (!(profile as any).displayName && u.displayName) update.displayName = u.displayName
-          await setUserProfile(u.uid, update)
+    function clearSubscriptions() {
+      if (unsubFixed) { unsubFixed(); unsubFixed = null }
+      if (unsubVariable) { unsubVariable(); unsubVariable = null }
+      if (unsubBoxes) { unsubBoxes(); unsubBoxes = null }
+    }
 
-          // Merge profile for local state without overwriting user-specific settings
-          const merged = {
-            uid: u.uid,
-            email: u.email ?? (profile as any).email ?? undefined,
-            displayName: (profile as any).displayName ?? u.displayName ?? (u.email ?? (profile as any).email ?? undefined),
-            ...(profile as any),
-            createdAt
-          }
-          setProfile(merged as any)
-        } catch (err) {
-          console.error('Failed to sync user profile to Firestore', err)
+    async function handlePendingInvite(isNewProfile: boolean): Promise<boolean> {
+      const token = getPendingInvite()
+      if (!token) return false
+
+      if (isNewProfile) {
+        // New user — go through onboarding first, it will accept the invite at the end
+        return false
+      }
+
+      // Existing user — accept invite immediately and redirect to partnership
+      try {
+        const result = await acceptInvite(token)
+        clearPendingInvite()
+        navigate(`/shared/${result.partnership_id}`)
+        return true
+      } catch (err) {
+        console.error('Failed to accept pending invite', err)
+        clearPendingInvite()
+        return false
+      }
+    }
+
+    async function loadUserData(u: User, isNewSignIn: boolean) {
+      clearSubscriptions()
+
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', u.id)
+          .single()
+
+        const isNewProfile = !profile?.net_salary
+
+        if (profile) {
+          setProfile({
+            uid: u.id,
+            email: u.email ?? undefined,
+            displayName: profile.display_name ?? u.email ?? undefined,
+            netSalary: profile.net_salary ?? 0,
+            payDay: profile.pay_day ?? 1,
+            savingsPercent: profile.savings_percent ?? 0.2,
+          } as any)
         }
 
-        // real-time listeners for expenses
-        const fixedCol = collection(db, 'users', u.uid, 'fixedExpenses')
-        const variableCol = collection(db, 'users', u.uid, 'variableExpenses')
-        const boxesCol = collection(db, 'users', u.uid, 'savingBoxes')
+        // Handle pending invite or onboarding redirect on fresh sign-in
+        if (isNewSignIn && u.email) {
+          const pendingToken = getPendingInvite()
+          if (pendingToken) {
+            if (isNewProfile) {
+              // New user via OAuth with pending invite — go to onboarding
+              // Onboarding will accept the invite after profile setup
+              navigate('/onboarding')
+            } else {
+              // Existing user with pending invite — accept immediately
+              await handlePendingInvite(false)
+            }
+          } else if (isNewProfile) {
+            // New user without invite — go to onboarding
+            navigate('/onboarding')
+          }
+        }
 
-        unsubFixed = onSnapshot(fixedCol, (snap) => {
-          const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
-          setFixedExpenses(items as any)
-        })
+        const sessionId = crypto.randomUUID()
 
-        unsubVariable = onSnapshot(variableCol, (snap) => {
-          const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
-          setVariableExpenses(items as any)
-        })
+        const fixedSub = supabase
+          .channel(`fixed_expenses:${u.id}:${sessionId}`)
+          .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'fixed_expenses',
+            filter: `user_id=eq.${u.id}`
+          }, () => fetchFixed(u.id))
+          .subscribe()
 
-        unsubBoxes = onSnapshot(boxesCol, (snap) => {
-          const items = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))
-          // set into store
-          ;(useFinanceStore.getState().setSavingBoxes as any)(items)
-        }, (err) => {
-          // handle permission or other listener errors gracefully
-          console.error('SavingBoxes listener error', err)
-          // clear boxes to avoid stale data when permissions change
-          ;(useFinanceStore.getState().setSavingBoxes as any)([])
-        })
+        const variableSub = supabase
+          .channel(`variable_expenses:${u.id}:${sessionId}`)
+          .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'variable_expenses',
+            filter: `user_id=eq.${u.id}`
+          }, () => fetchVariable(u.id))
+          .subscribe()
+
+        const boxesSub = supabase
+          .channel(`saving_boxes:${u.id}:${sessionId}`)
+          .on('postgres_changes', {
+            event: '*', schema: 'public', table: 'saving_boxes',
+            filter: `user_id=eq.${u.id}`
+          }, () => fetchBoxes(u.id))
+          .subscribe()
+
+        await Promise.all([
+          fetchFixed(u.id),
+          fetchVariable(u.id),
+          fetchBoxes(u.id),
+        ])
+
+        unsubFixed = () => supabase.removeChannel(fixedSub)
+        unsubVariable = () => supabase.removeChannel(variableSub)
+        unsubBoxes = () => supabase.removeChannel(boxesSub)
+
+      } catch (err) {
+        console.error('Failed to load user data', err)
+      }
+    }
+
+    async function fetchFixed(userId: string) {
+      const { data } = await supabase
+        .from('fixed_expenses').select('*')
+        .eq('user_id', userId).order('created_at', { ascending: true })
+      setFixedExpenses((data ?? []).map(d => ({
+        id: d.id, name: d.name, amount: d.amount, category: d.category,
+      })) as any)
+    }
+
+    async function fetchVariable(userId: string) {
+      const { data } = await supabase
+        .from('variable_expenses').select('*')
+        .eq('user_id', userId).order('date', { ascending: false })
+      setVariableExpenses((data ?? []).map(d => ({
+        id: d.id, title: d.title, amount: d.amount,
+        category: d.category, date: d.date, note: d.note ?? undefined,
+      })) as any)
+    }
+
+    async function fetchBoxes(userId: string) {
+      const { data } = await supabase
+        .from('saving_boxes').select('*')
+        .eq('user_id', userId).order('created_at', { ascending: true })
+      setSavingBoxes((data ?? []).map(d => ({
+        id: d.id, name: d.name, emoji: d.emoji ?? undefined,
+        amount: d.amount, createdAt: d.created_at,
+      })) as any)
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, sess) => {
+      setSession(sess)
+      setUser(sess?.user ?? null)
+
+      if (sess?.user) {
+        // SIGNED_IN fires on OAuth callback and fresh logins
+        const isNewSignIn = event === 'SIGNED_IN'
+        await loadUserData(sess.user, isNewSignIn)
       } else {
         setProfile(null as any)
-        if (unsubFixed) unsubFixed()
-        if (unsubVariable) unsubVariable()
-        if (unsubBoxes) unsubBoxes()
+        setFixedExpenses([])
+        setVariableExpenses([])
+        setSavingBoxes([])
+        clearSubscriptions()
       }
+
       setLoading(false)
     })
 
     return () => {
-      unsub()
-      if (unsubFixed) unsubFixed()
-      if (unsubVariable) unsubVariable()
-      if (unsubBoxes) unsubBoxes()
+      subscription.unsubscribe()
+      clearSubscriptions()
     }
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, register: authService.register, login: authService.login, googleSignIn: authService.signInWithGoogle, logout: authService.logout }}>
+    <AuthContext.Provider value={{
+      user, session, loading,
+      register: authService.register,
+      login: authService.login,
+      googleSignIn: authService.googleSignIn,
+      logout: authService.logout,
+    }}>
       {children}
     </AuthContext.Provider>
   )

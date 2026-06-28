@@ -4,7 +4,7 @@ import { useFinanceStore } from '../store/useFinanceStore'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { subscribeToUserSharedAdjustments } from '../services/sharedUserAdjustments'
-import { subscribeToSharedGroups } from '../services/sharedGroups'
+import { subscribeToPartnerships } from '../services/sharedGroups'
 import { addVariableExpenseToUser, deleteVariableExpenseFromUser, updateVariableExpenseInUser } from '../services/expenses'
 import Toast from '../components/Toast'
 import CurrencyInput from '../components/CurrencyInput'
@@ -41,17 +41,19 @@ export default function VariableExpenses() {
       setToast({ message: 'Preencha título e valor maior que 0', variant: 'warning' })
       return
     }
-    const item = { id: Date.now().toString(), title: title.trim(), amount, category, date }
-    addVariableExpense(item as any)
     try {
-      if (user) await addVariableExpenseToUser(user.uid, item)
+      if (user) {
+        const result = await addVariableExpenseToUser(user.id, { title: title.trim(), amount, category, date })
+        addVariableExpense({ id: result.id, title: result.title, amount: result.amount, category: result.category, date: result.date, note: result.note ?? undefined })
+      }
       setToast({ message: 'Gasto adicionado', variant: 'success' })
+      setTitle('')
+      setAmount(0)
+      setDate(todayISO)
     } catch (err) {
+      console.error(err)
       setToast({ message: 'Erro ao salvar gasto', variant: 'error' })
     }
-    setTitle('')
-    setAmount(0)
-    setDate(todayISO)
   }
 
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; title?: string } | null>(null)
@@ -62,23 +64,24 @@ export default function VariableExpenses() {
   // subscribe to user's shared groups and adjustments to show derived cards
   useEffect(() => {
     if (!user) return
-    const unsubGroups = subscribeToSharedGroups(user.uid, (groups) => {
+    const unsubGroups = subscribeToPartnerships(user.id, (partnerships) => {
       const m: Record<string, any> = {}
-      groups.forEach((g: any) => { m[g.id] = g })
+      partnerships.forEach((p: any) => { m[p.id] = p })
       setGroupsMap(m)
-    }, (err) => console.error('shared groups error', err))
+    }, (err) => console.error('partnerships error', err))
 
-    const unsubAdj = subscribeToUserSharedAdjustments(user.uid, (adj) => {
+    const unsubAdj = subscribeToUserSharedAdjustments(user.id, (adj) => {
       setSharedAdjustments(adj)
     }, (err) => console.error('shared adjustments error', err))
 
-    return () => { unsubGroups && unsubGroups(); unsubAdj && unsubAdj() }
+    return () => { unsubGroups?.(); unsubAdj?.() }
   }, [user])
 
   async function handleDelete(id: string) {
     if (!user) return
     try {
-      await deleteVariableExpenseFromUser(user.uid, id)
+      await deleteVariableExpenseFromUser(user.id, id)
+      useFinanceStore.getState().removeVariableExpense(id)
       setToast({ message: 'Gasto excluído', variant: 'success' })
     } catch (err) {
       console.error(err)
@@ -99,7 +102,9 @@ export default function VariableExpenses() {
     if (!user || !editing) return
     try {
       const upd = { title: editing.title, amount: editing.amount, category: editing.category, date: editing.date }
-      await updateVariableExpenseInUser(user.uid, editing.id, upd)
+      await updateVariableExpenseInUser(user.id, editing.id, upd)
+      // update local store so UI reflects the change immediately
+      useFinanceStore.getState().updateVariableExpense({ id: editing.id, ...upd, note: editing.note ?? undefined })
       setEditing(null)
       setToast({ message: 'Gasto atualizado', variant: 'success' })
     } catch (err) {
@@ -488,7 +493,7 @@ export default function VariableExpenses() {
           </div>
         ) : (
 
-          Object.entries(groupedExpenses).map(([date, expenses]: [string, any[]]) => {
+          Object.entries(groupedExpenses as Record<string, any[]>).map(([date, expenses]) => {
             const totalDay = expenses.reduce(
               (sum, item) => sum + item.amount,
               0
