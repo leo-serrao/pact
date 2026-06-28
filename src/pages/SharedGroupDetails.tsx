@@ -56,6 +56,7 @@ export default function SharedGroupDetails() {
   const [payFrom, setPayFrom] = useState<string | null>(null)
   const [payTo, setPayTo] = useState<string | null>(null)
   const [confirmDeleteExpense, setConfirmDeleteExpense] = useState<SharedExpense | null>(null)
+  const [paymentsModalOpen, setPaymentsModalOpen] = useState(false)
 
   // Load partnership details
   useEffect(() => {
@@ -318,36 +319,14 @@ export default function SharedGroupDetails() {
           ))
         )}
 
-        {/* Payment history */}
         {payments.length > 0 && (
-          <div className="flex flex-col gap-2 mt-2">
-            <div className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-              Pagamentos registrados
-            </div>
-            {payments.map(p => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
-              >
-                <div className="text-xs text-[var(--text-secondary)]">
-                  <span className="font-medium text-[var(--text-primary)]">{getMemberName(p.from_user_id)}</span>
-                  {' pagou '}
-                  <span className="font-medium text-[var(--text-primary)]">{getMemberName(p.to_user_id)}</span>
-                  {' · R$ '}{p.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  {p.date && (
-                    <span className="ml-1 text-[var(--text-muted)]">
-                      · {formatBRDate(p.date)}
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={() => handleDeletePayment(p.id)}
-                  className="text-xs text-[var(--danger)] hover:underline shrink-0"
-                >
-                  Remover
-                </button>
-              </div>
-            ))}
+          <div className="flex justify-end mt-1">
+            <button
+              onClick={() => setPaymentsModalOpen(true)}
+              className="text-xs font-medium text-[var(--primary)] hover:underline"
+            >
+              Ver histórico de pagamentos ({payments.length})
+            </button>
           </div>
         )}
       </section>
@@ -526,6 +505,40 @@ export default function SharedGroupDetails() {
                 Confirmar
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Payments history modal */}
+      {paymentsModalOpen && (
+        <Modal title={`Histórico de pagamentos (${payments.length})`} onClose={() => setPaymentsModalOpen(false)}>
+          <div className="flex flex-col gap-2">
+            {[...payments]
+              .sort((a, b) => new Date(b.date ?? '').getTime() - new Date(a.date ?? '').getTime())
+              .map(p => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+                >
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    <span className="font-medium text-[var(--text-primary)]">{getMemberName(p.from_user_id)}</span>
+                    {' pagou '}
+                    <span className="font-medium text-[var(--text-primary)]">{getMemberName(p.to_user_id)}</span>
+                    {' · R$ '}{p.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {p.date && (
+                      <span className="ml-1 text-[var(--text-muted)]">
+                        · {formatBRDate(p.date)}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDeletePayment(p.id)}
+                    className="text-xs text-[var(--danger)] hover:underline shrink-0"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ))}
           </div>
         </Modal>
       )}
