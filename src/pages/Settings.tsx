@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Bell, BellOff } from 'lucide-react'
 import { useFinanceStore } from '../store/useFinanceStore'
 import { useAuth } from '../contexts/AuthContext'
 import { setUserProfile } from '../services/profile'
@@ -7,6 +8,7 @@ import {
   addFixedExpenseToUser,
   updateFixedExpenseInUser
 } from '../services/expenses'
+import { usePushSubscription } from '../hooks/usePushSubscription'
 
 import Toast from '../components/Toast'
 import CurrencyInput from '../components/CurrencyInput'
@@ -17,6 +19,7 @@ import { FIXED_EXPENSE_CATEGORIES } from '../types'
 export default function Settings() {
   const { profile, fixedExpenses, setProfile, updateFixedExpense } = useFinanceStore()
   const { user } = useAuth()
+  const { permissionState, isIosNonInstalled, requestPermission } = usePushSubscription()
 
   const [netSalary, setNetSalary] = useState<number>(profile?.netSalary ?? 0)
   const [payDay, setPayDay] = useState<number>(profile?.payDay ?? 1)
@@ -96,6 +99,14 @@ export default function Settings() {
       setToast({ message: 'Gasto atualizado', variant: 'success' })
     } catch {
       setToast({ message: 'Erro ao atualizar gasto', variant: 'error' })
+    }
+  }
+
+  async function handleActivatePush() {
+    try {
+      await requestPermission()
+    } catch {
+      setToast({ message: 'Erro ao ativar notificações push', variant: 'error' })
     }
   }
 
@@ -193,6 +204,57 @@ export default function Settings() {
           </div>
 
         </form>
+      </section>
+
+      {/* Push notifications card */}
+      <section className="card p-6 md:p-8">
+        <h2 className="text-base font-semibold text-[var(--text-primary)] mb-5">
+          Notificações push
+        </h2>
+
+        {permissionState === 'unsupported' && isIosNonInstalled && (
+          <p className="text-sm text-[var(--text-secondary)]">
+            Para receber notificações no iPhone, adicione o Pact à Tela de Início
+            (compartilhar → "Adicionar à Tela de Início") e abra o app por lá.
+          </p>
+        )}
+
+        {permissionState === 'unsupported' && !isIosNonInstalled && (
+          <p className="text-sm text-[var(--text-secondary)]">
+            Seu navegador não tem suporte a notificações push.
+          </p>
+        )}
+
+        {permissionState === 'denied' && (
+          <div className="flex items-center gap-3">
+            <BellOff size={20} className="text-[var(--text-muted)] shrink-0" />
+            <p className="text-sm text-[var(--text-secondary)]">
+              As notificações foram negadas. Para ativar, permita notificações para o Pact
+              nas configurações do navegador e recarregue a página.
+            </p>
+          </div>
+        )}
+
+        {permissionState === 'default' && (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-[var(--text-secondary)]">
+              Receba um aviso no seu celular quando houver despesas, dívidas quitadas
+              ou um parceiro entrar na parceria.
+            </p>
+            <button type="button" onClick={handleActivatePush} className="button-primary shrink-0">
+              Ativar
+            </button>
+          </div>
+        )}
+
+        {permissionState === 'granted' && (
+          <div className="flex items-center gap-3">
+            <Bell size={20} className="text-[var(--primary)] shrink-0" />
+            <p className="text-sm text-[var(--text-secondary)]">
+              Notificações push ativadas neste dispositivo.
+            </p>
+          </div>
+        )}
       </section>
 
       <ConfirmModal
