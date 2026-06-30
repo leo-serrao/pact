@@ -4,6 +4,7 @@ export async function createSharedExpense(partnershipId: string, data: {
   title: string
   amount: number
   paid_by: string
+  split_type?: 'equal' | 'full'
   date: string
   note?: string
 }) {
@@ -21,6 +22,7 @@ export async function updateSharedExpense(expenseId: string, data: {
   title?: string
   amount?: number
   paid_by?: string
+  split_type?: 'equal' | 'full'
   date?: string
   note?: string
 }) {

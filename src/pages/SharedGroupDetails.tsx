@@ -48,6 +48,7 @@ export default function SharedGroupDetails() {
     title: '',
     amount: 0,
     paid_by: '',
+    split_type: 'equal' as 'equal' | 'full',
     date: getLocalISODate()
   })
 
@@ -142,6 +143,7 @@ export default function SharedGroupDetails() {
       title: '',
       amount: 0,
       paid_by: user?.id ?? '',
+      split_type: 'equal',
       date: getLocalISODate()
     })
   }
@@ -160,6 +162,7 @@ export default function SharedGroupDetails() {
         title: form.title,
         amount: Number(form.amount),
         paid_by: form.paid_by,
+        split_type: form.split_type,
         date: form.date,
       }
 
@@ -192,6 +195,7 @@ export default function SharedGroupDetails() {
       title: exp.title,
       amount: exp.amount,
       paid_by: exp.paid_by,
+      split_type: exp.split_type ?? 'equal',
       date: exp.date.split('T')[0]
     })
     setOpenNew(true)
@@ -404,6 +408,26 @@ export default function SharedGroupDetails() {
                 onChange={v => setForm(f => ({ ...f, amount: v }))}
                 className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 text-base text-[var(--text-primary)] outline-none transition focus:border-[var(--primary)] focus:ring-4 focus:ring-[rgba(96,136,121,0.10)]"
               />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">Divisão</label>
+              <div className="flex gap-2">
+                {(['equal', 'full'] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, split_type: type }))}
+                    className={`flex-1 h-11 rounded-2xl text-sm font-medium border transition-all duration-200
+                      ${form.split_type === type
+                        ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
+                        : 'bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--primary)]'
+                      }`}
+                  >
+                    {type === 'equal' ? 'Dividir igualmente' : 'Cobrar tudo do outro'}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
