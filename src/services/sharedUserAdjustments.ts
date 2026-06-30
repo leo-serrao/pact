@@ -39,9 +39,15 @@ export function subscribeToUserSharedAdjustments(
       expenseUnsubs[p.id] = subscribeToSharedExpenses(p.id, (expenses) => {
         partnershipAdjustments[p.id] = expenses.map(e => {
           const isPayer = e.paid_by === uid
-          // Split 50/50 between the two partners
-          const split = e.amount / 2
-          const impact = isPayer ? e.amount - split : split
+          const splitType = e.split_type ?? 'equal'
+          let impact: number
+
+          if (splitType === 'full') {
+            impact = isPayer ? 0 : e.amount
+          } else {
+            const split = e.amount / 2
+            impact = isPayer ? e.amount - split : split
+          }
 
           return {
             id: `${p.id}_${e.id}`,

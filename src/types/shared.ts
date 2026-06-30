@@ -19,6 +19,7 @@ export interface SharedExpense {
   title: string
   amount: number
   paid_by: string
+  split_type: 'equal' | 'full'
   date: string
   note?: string
   created_at: string

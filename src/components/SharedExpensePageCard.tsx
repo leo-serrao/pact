@@ -49,6 +49,12 @@ export default function SharedExpenseCard({
             </span>
           </div>
 
+          {expense.split_type === 'full' && (
+            <span className="mt-2 inline-flex items-center rounded-full bg-[rgba(96,136,121,0.12)] px-2.5 py-0.5 text-xs font-medium text-[var(--primary)]">
+              Cobrado integralmente
+            </span>
+          )}
+
           <div className="mt-3 text-lg font-semibold tracking-tight text-[var(--text-primary)]">
             {currency.format(expense.amount)}
           </div>
