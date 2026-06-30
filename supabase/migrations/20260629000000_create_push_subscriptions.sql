@@ -17,3 +17,8 @@ create policy "Users manage their own push subscriptions"
   for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- This project's default grants (set up outside this repo) only cover
+-- authenticated/anon/postgres; service_role needs explicit grants here so
+-- the send-push edge function can read/write subscriptions.
+grant select, insert, update, delete on public.push_subscriptions to service_role;
