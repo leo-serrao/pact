@@ -23,13 +23,59 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 )
 
-const appServerPromise = webpush.ApplicationServer.new({
-  contactInformation: `mailto:${Deno.env.get("VAPID_SUBJECT_EMAIL")}`,
-  vapidKeys: {
-    publicKey: Deno.env.get("VAPID_PUBLIC_KEY")!,
-    privateKey: Deno.env.get("VAPID_PRIVATE_KEY")!,
-  },
-})
+function base64UrlToUint8Array(base64Url: string): Uint8Array {
+  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, "=")
+  const binary = atob(padded)
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0))
+}
+
+function uint8ArrayToBase64Url(bytes: Uint8Array): string {
+  let binary = ""
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+// @negrel/webpush's ApplicationServer requires vapidKeys as a real
+// CryptoKeyPair, not the raw base64url strings the VAPID_PUBLIC_KEY /
+// VAPID_PRIVATE_KEY secrets are stored as (same raw EC P-256 format the
+// `web-push` npm package generates). Reconstruct the JWK manually from the
+// raw public point (0x04 + x + y) and private scalar (d) instead.
+async function importRawVapidKeys(publicKeyB64: string, privateKeyB64: string): Promise<CryptoKeyPair> {
+  const publicBytes = base64UrlToUint8Array(publicKeyB64)
+  const privateBytes = base64UrlToUint8Array(privateKeyB64)
+
+  const jwkPublic: JsonWebKey = {
+    kty: "EC",
+    crv: "P-256",
+    x: uint8ArrayToBase64Url(publicBytes.slice(1, 33)),
+    y: uint8ArrayToBase64Url(publicBytes.slice(33, 65)),
+    ext: true,
+  }
+
+  const [publicKey, privateKey] = await Promise.all([
+    crypto.subtle.importKey("jwk", jwkPublic, { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"]),
+    crypto.subtle.importKey(
+      "jwk",
+      { ...jwkPublic, d: uint8ArrayToBase64Url(privateBytes) },
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign"],
+    ),
+  ])
+
+  return { publicKey, privateKey }
+}
+
+const appServerPromise = importRawVapidKeys(
+  Deno.env.get("VAPID_PUBLIC_KEY")!,
+  Deno.env.get("VAPID_PRIVATE_KEY")!,
+).then((vapidKeys) =>
+  webpush.ApplicationServer.new({
+    contactInformation: `mailto:${Deno.env.get("VAPID_SUBJECT_EMAIL")}`,
+    vapidKeys,
+  })
+)
 
 Deno.serve(async (req: Request) => {
   const payload: WebhookPayload = await req.json()
@@ -61,6 +107,7 @@ Deno.serve(async (req: Request) => {
 
   const appServer = await appServerPromise
   const staleSubscriptionIds: string[] = []
+  let failedCount = 0
 
   await Promise.all(
     subscriptions.map(async (sub) => {
@@ -74,6 +121,9 @@ Deno.serve(async (req: Request) => {
         const status = (err as { statusCode?: number })?.statusCode
         if (status === 404 || status === 410) {
           staleSubscriptionIds.push(sub.id)
+        } else {
+          failedCount++
+          console.error(`push failed for subscription ${sub.id} (endpoint: ${sub.endpoint}):`, err)
         }
       }
     }),
@@ -84,7 +134,11 @@ Deno.serve(async (req: Request) => {
   }
 
   return new Response(
-    JSON.stringify({ sent: subscriptions.length - staleSubscriptionIds.length, removed: staleSubscriptionIds.length }),
+    JSON.stringify({
+      sent: subscriptions.length - staleSubscriptionIds.length - failedCount,
+      removed: staleSubscriptionIds.length,
+      failed: failedCount,
+    }),
     { status: 200 },
   )
 })
