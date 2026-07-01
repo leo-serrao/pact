@@ -282,15 +282,6 @@ export default function Home() {
     setOpenAdd(false)
   }
 
-  // Variable expenses for the current calendar month (1st to today)
-  const monthVariableSpent = useMemo(() => {
-    const now = new Date()
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    return mergedVariableExpenses
-      .filter(v => v.date.split('T')[0].startsWith(monthKey))
-      .reduce((s, v) => s + v.amount, 0)
-  }, [mergedVariableExpenses])
-
   // Progress bar: % of available-for-variables already spent
   const spentPercent = allocations.availableForVariables > 0
     ? Math.min(100, Math.round((proj.totalVariableSpent / allocations.availableForVariables) * 100))
@@ -416,7 +407,7 @@ export default function Home() {
         <div className="rounded-2xl bg-[var(--surface-secondary)] p-4">
           <div className="text-xs text-[var(--text-secondary)]">Gastos variáveis</div>
           <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">
-            {currency.format(monthVariableSpent)}
+            {currency.format(proj.totalVariableSpent)}
           </div>
         </div>
 
@@ -491,7 +482,7 @@ export default function Home() {
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-[var(--text-secondary)]">Gastos variáveis</span>
-              <span className="font-medium text-red-500">− {currency.format(monthVariableSpent)}</span>
+              <span className="font-medium text-red-500">− {currency.format(proj.totalVariableSpent)}</span>
             </div>
             <div className="h-px bg-[var(--border)]" />
             <div className="flex items-center justify-between">
